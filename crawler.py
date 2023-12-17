@@ -71,9 +71,12 @@ def crawl_url(url: str, crawl_id: str, customer_id: int, corpus_id: int,
 
     if crawl_pattern != None and not crawl_pattern.match(url):
         return "Crawl pattern not matched", False
-    
-    filename = str(time.time()) + ".pdf"
-    if retry == False or prefetched_filename != None:
+
+    filename = f"{str(time.time())}.pdf"
+    if retry and prefetched_filename is None:
+        filename = prefetched_filename
+
+    else:
         logging.info("Grabbing %s", url)
         # r = requests.get(url)
         if pdf_driver == 'chrome':
@@ -81,9 +84,6 @@ def crawl_url(url: str, crawl_id: str, customer_id: int, corpus_id: int,
                                   install_driver=install_chrome_driver)
         elif pdf_driver == 'wkhtmltopdf':
           list_files = subprocess.run(["wkhtmltopdf", url, filename])
-    else:
-        filename = prefetched_filename
-
     post_headers = {
         "Authorization": f"Bearer {token}"
     }
@@ -110,7 +110,7 @@ def crawl_url(url: str, crawl_id: str, customer_id: int, corpus_id: int,
         verify=True,
         headers=post_headers)
 
-    if response.status_code == 401 and retry == False:
+    if response.status_code == 401 and not retry:
         token = _get_jwt_token(auth_url, appclient_id, appclient_secret)
         crawl_url(url, crawl_id, customer_id, corpus_id, crawl_pattern,
                   idx_address, True, filename, pdf_driver,
@@ -155,7 +155,7 @@ def crawl_recursive(url: str, max_depth: int, crawl_id: str, customer_id: int,
             for link in links:
                 if (link != None and seen_pages != None and link not in seen_pages):
                     seen_pages.add(link)
-                    if crawl_pattern == None or crawl_pattern.match(link):
+                    if crawl_pattern is None or crawl_pattern.match(link):
                         crawl_recursive(link, max_depth, crawl_id, customer_id,
                                         corpus_id, crawl_pattern, idx_address,
                                         current_depth+1,
@@ -225,9 +225,7 @@ if __name__ == "__main__":
                         help="What software to use to convert webpages to PDFs",
                         default='chrome')
 
-    args = parser.parse_args()
-
-    if args:
+    if args := parser.parse_args():
         auth_url = args.auth_url
         if auth_url == "":
             auth_url = f"https://vectara-prod-{args.customer_id}.auth.us-west-2.amazoncognito.com"
@@ -239,7 +237,7 @@ if __name__ == "__main__":
         crawl_pattern = None
         if args.crawl_pattern != None:
             crawl_pattern = re.compile(args.crawl_pattern)
-        
+
         if token:
             if args.crawl_type == 'single-page':
                 error, status = crawl_url(url=args.url,
